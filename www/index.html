@@ -5046,12 +5046,16 @@
 
       /* --- Capacitor Native Android LocalNotifications (Alarm Bawaan Android, Aman di Browser) --- */
       const NATIVE_ALARM_ID = 1001;
-      const NATIVE_STATUS_NOTIF_ID = 1002;
-      const NATIVE_DONE_NOW_NOTIF_ID = 1003;
-      const NATIVE_NOTIF_CHANNEL_ID = 'electrolux-wash-alarm';
+      const NATIVE_NOTIF_CHANNEL_ID = 'electrolux_alarm_high';
 
       function getCapacitorLocalNotifications() {
         return window.Capacitor?.Plugins?.LocalNotifications || null;
+      }
+
+      function nextUniqueNativeNotifId() {
+        let id = Math.floor(Date.now() % 100000);
+        if (id < 2000) id += 2000; // Hindari bentrok dengan NATIVE_ALARM_ID (1001)
+        return id;
       }
 
       async function ensureNativeNotifChannel(localNotif) {
@@ -5060,9 +5064,10 @@
           await localNotif.createChannel({
             id: NATIVE_NOTIF_CHANNEL_ID,
             name: 'Alarm Mesin Cuci',
-            description: 'Notifikasi status dan alarm saat cucian Electrolux 8.0kg selesai',
+            description: 'Notifikasi pop-up dan suara untuk Mulai, Jeda, dan Selesai',
             importance: 5,
             visibility: 1,
+            sound: 'default',
             vibration: true
           });
         } catch (err) {}
@@ -5100,6 +5105,7 @@
                 title: 'Cucian Selesai! 🧺',
                 body: 'Pakaian di Electrolux 8.0kg sudah selesai dicuci, yuk segera dijemur.',
                 channelId: NATIVE_NOTIF_CHANNEL_ID,
+                sound: 'default',
                 schedule: { at: triggerAt, allowWhileIdle: true }
               }
             ]
@@ -5272,8 +5278,7 @@
         tag = 'electrolux-wash-status',
         vibrate = [150, 80, 150],
         requireInteraction = false,
-        messageType = 'SHOW_WASH_NOTIFICATION',
-        nativeId = NATIVE_STATUS_NOTIF_ID
+        messageType = 'SHOW_WASH_NOTIFICATION'
       }) {
         if (navigator.vibrate && Array.isArray(vibrate)) {
           try {
@@ -5281,7 +5286,7 @@
           } catch (e) {}
         }
 
-        // 1. Jika berjalan di APK Android (Capacitor), kirim langsung via LocalNotifications.schedule (1 detik dari sekarang)
+        // 1. Jika berjalan di APK Android (Capacitor), kirim langsung TANPA properti schedule agar pop-up instan
         const localNotif = getCapacitorLocalNotifications();
         if (localNotif) {
           try {
@@ -5296,17 +5301,14 @@
             }
             if (perm?.display !== 'granted') return;
 
-            if (typeof localNotif.cancel === 'function') {
-              await localNotif.cancel({ notifications: [{ id: nativeId }] }).catch(() => {});
-            }
             await localNotif.schedule({
               notifications: [
                 {
-                  id: nativeId,
+                  id: nextUniqueNativeNotifId(),
                   title,
                   body,
                   channelId: NATIVE_NOTIF_CHANNEL_ID,
-                  schedule: { at: new Date(Date.now() + 1000), allowWhileIdle: true }
+                  sound: 'default'
                 }
               ]
             });
@@ -5367,8 +5369,7 @@
             body: `Mode ${modeName} berjalan. Estimasi selesai pukul ${eta}.`,
             tag: 'electrolux-wash-status',
             vibrate: [150, 80, 150],
-            requireInteraction: false,
-            nativeId: NATIVE_STATUS_NOTIF_ID
+            requireInteraction: false
           });
         } else if (action === 'pause') {
           const sisa = formatRemainingMinSec(remainingMs || 0);
@@ -5377,8 +5378,7 @@
             body: `Mode ${modeName} dijeda. Sisa waktu ${sisa}.`,
             tag: 'electrolux-wash-status',
             vibrate: [120, 60, 120],
-            requireInteraction: false,
-            nativeId: NATIVE_STATUS_NOTIF_ID
+            requireInteraction: false
           });
         } else if (action === 'resume') {
           const eta = formatClockTime(endTime || Date.now());
@@ -5387,8 +5387,7 @@
             body: `Mode ${modeName} kembali berjalan. Estimasi selesai pukul ${eta}.`,
             tag: 'electrolux-wash-status',
             vibrate: [150, 80, 150],
-            requireInteraction: false,
-            nativeId: NATIVE_STATUS_NOTIF_ID
+            requireInteraction: false
           });
         }
       }
@@ -5400,8 +5399,7 @@
           tag: 'electrolux-wash-done',
           vibrate: [300, 100, 300, 100, 300],
           requireInteraction: true,
-          messageType: 'SHOW_COMPLETION_NOTIFICATION',
-          nativeId: NATIVE_DONE_NOW_NOTIF_ID
+          messageType: 'SHOW_COMPLETION_NOTIFICATION'
         });
       }
 

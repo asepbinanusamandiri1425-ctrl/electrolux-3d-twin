@@ -40,8 +40,11 @@ jobs:
             const manifestPath = "android/app/src/main/AndroidManifest.xml";
             let xml = fs.readFileSync(manifestPath, "utf8");
             const permissions = [
-              "android.permission.POST_NOTIFICATIONS",
+              "android.permission.USE_EXACT_ALARM",
               "android.permission.SCHEDULE_EXACT_ALARM",
+              "android.permission.WAKE_LOCK",
+              "android.permission.RECEIVE_BOOT_COMPLETED",
+              "android.permission.POST_NOTIFICATIONS",
               "android.permission.VIBRATE"
             ];
             const toInsert = permissions
