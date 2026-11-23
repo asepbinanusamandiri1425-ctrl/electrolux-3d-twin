@@ -1,0 +1,31 @@
+{
+  "name": "Electrolux 3D Twin",
+  "short_name": "Mesin Cuci 3D",
+  "description": "Simulasi Digital Twin 3D Interaktif Mesin Cuci Electrolux UltimateCare 300 UltraEco 8.0 KG (EWF8004E3WB)",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "theme_color": "#0f172a",
+  "background_color": "#0f172a",
+  "icons": [
+    {
+      "src": "./icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "./icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

@@ -1,0 +1,69 @@
+name: Build Android APK
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup Java 17 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Add Android platform & sync Capacitor
+        run: |
+          npx cap add android
+          npx cap sync android
+
+      - name: Inject Android notification & alarm permissions
+        run: |
+          node -e '
+            const fs = require("fs");
+            const manifestPath = "android/app/src/main/AndroidManifest.xml";
+            let xml = fs.readFileSync(manifestPath, "utf8");
+            const permissions = [
+              "android.permission.POST_NOTIFICATIONS",
+              "android.permission.SCHEDULE_EXACT_ALARM",
+              "android.permission.VIBRATE"
+            ];
+            const toInsert = permissions
+              .filter((p) => !xml.includes(p))
+              .map((p) => `    <uses-permission android:name="${p}" />`)
+              .join("\n");
+            if (toInsert) {
+              xml = xml.replace("<application", `${toInsert}\n\n    <application`);
+              fs.writeFileSync(manifestPath, xml, "utf8");
+            }
+            console.log("Updated AndroidManifest.xml:\n" + xml);
+          '
+
+      - name: Build Debug APK
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: electrolux-3d-twin-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
