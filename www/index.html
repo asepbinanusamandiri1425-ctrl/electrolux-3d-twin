@@ -5046,35 +5046,49 @@
 
       /* --- Capacitor Native Android LocalNotifications (Alarm Bawaan Android, Aman di Browser) --- */
       const NATIVE_ALARM_ID = 1001;
+      const NATIVE_STATUS_NOTIF_ID = 1002;
+      const NATIVE_DONE_NOW_NOTIF_ID = 1003;
+      const NATIVE_NOTIF_CHANNEL_ID = 'electrolux-wash-alarm';
 
       function getCapacitorLocalNotifications() {
         return window.Capacitor?.Plugins?.LocalNotifications || null;
+      }
+
+      async function ensureNativeNotifChannel(localNotif) {
+        if (!localNotif || typeof localNotif.createChannel !== 'function') return;
+        try {
+          await localNotif.createChannel({
+            id: NATIVE_NOTIF_CHANNEL_ID,
+            name: 'Alarm Mesin Cuci',
+            description: 'Notifikasi status dan alarm saat cucian Electrolux 8.0kg selesai',
+            importance: 5,
+            visibility: 1,
+            vibration: true
+          });
+        } catch (err) {}
       }
 
       async function initNativeLocalNotifications() {
         const localNotif = getCapacitorLocalNotifications();
         if (!localNotif) return;
         try {
-          if (typeof localNotif.requestPermissions === 'function') {
+          await ensureNativeNotifChannel(localNotif);
+          let permStatus = null;
+          if (typeof localNotif.checkPermissions === 'function') {
+            permStatus = await localNotif.checkPermissions();
+          }
+          if (permStatus?.display !== 'granted' && typeof localNotif.requestPermissions === 'function') {
             await localNotif.requestPermissions();
           }
-          if (typeof localNotif.createChannel === 'function') {
-            await localNotif.createChannel({
-              id: 'electrolux-wash-alarm',
-              name: 'Alarm Mesin Cuci',
-              description: 'Notifikasi alarm bawaan saat cucian Electrolux 8.0kg selesai',
-              importance: 5,
-              visibility: 1,
-              vibration: true
-            });
-          }
         } catch (err) {}
+        await updateNotifButton();
       }
 
       async function scheduleNativeCompletionAlarm(endTimeMs) {
         const localNotif = getCapacitorLocalNotifications();
         if (!localNotif || !endTimeMs) return;
         try {
+          await ensureNativeNotifChannel(localNotif);
           if (typeof localNotif.cancel === 'function') {
             await localNotif.cancel({ notifications: [{ id: NATIVE_ALARM_ID }] }).catch(() => {});
           }
@@ -5085,7 +5099,7 @@
                 id: NATIVE_ALARM_ID,
                 title: 'Cucian Selesai! 🧺',
                 body: 'Pakaian di Electrolux 8.0kg sudah selesai dicuci, yuk segera dijemur.',
-                channelId: 'electrolux-wash-alarm',
+                channelId: NATIVE_NOTIF_CHANNEL_ID,
                 schedule: { at: triggerAt, allowWhileIdle: true }
               }
             ]
@@ -5100,9 +5114,6 @@
           await localNotif.cancel({ notifications: [{ id: NATIVE_ALARM_ID }] });
         } catch (err) {}
       }
-
-      // Otomatis minta izin notifikasi bawaan saat aplikasi dibuka di Android (APK)
-      initNativeLocalNotifications();
 
       /* --- PWA Service Worker Registration & Native Mobile Web Notification API --- */
       let swRegistration = null;
@@ -5121,13 +5132,41 @@
       const btnEnableNotif = document.getElementById('btn-enable-notif');
       const btnTestSound = document.getElementById('btn-test-sound');
 
-      function updateNotifButton() {
+      async function updateNotifButton() {
         if (!btnEnableNotif) return;
+
+        // 1. Cek Capacitor LocalNotifications (APK Android) lebih dulu sebelum Web Notification API
+        const localNotif = getCapacitorLocalNotifications();
+        if (localNotif) {
+          btnEnableNotif.disabled = false;
+          btnEnableNotif.classList.remove('granted', 'denied');
+          try {
+            const permStatus =
+              typeof localNotif.checkPermissions === 'function'
+                ? await localNotif.checkPermissions()
+                : { display: 'prompt' };
+            if (permStatus?.display === 'granted') {
+              btnEnableNotif.classList.add('granted');
+              btnEnableNotif.textContent = 'Notifikasi Android Aktif ✅';
+            } else if (permStatus?.display === 'denied') {
+              btnEnableNotif.classList.add('denied');
+              btnEnableNotif.textContent = '🔔 Aktifkan Notifikasi HP';
+            } else {
+              btnEnableNotif.textContent = '🔔 Aktifkan Notifikasi HP';
+            }
+          } catch (err) {
+            btnEnableNotif.textContent = '🔔 Aktifkan Notifikasi HP';
+          }
+          return;
+        }
+
+        // 2. Fallback untuk browser biasa (Web Notification API)
         if (!('Notification' in window)) {
           btnEnableNotif.textContent = 'ℹ️ Notifikasi Tidak Didukung';
           btnEnableNotif.disabled = true;
           return;
         }
+        btnEnableNotif.disabled = false;
         btnEnableNotif.classList.remove('granted', 'denied');
         if (Notification.permission === 'granted') {
           btnEnableNotif.classList.add('granted');
@@ -5144,13 +5183,40 @@
         updateNotifButton();
         btnEnableNotif.addEventListener('click', async () => {
           unlockAudio();
+
+          // 1. Mode APK Android (Capacitor LocalNotifications)
           const nativeLocalNotif = getCapacitorLocalNotifications();
           if (nativeLocalNotif) {
-            await initNativeLocalNotifications();
-            if (navigator.vibrate) navigator.vibrate([120, 60, 120]);
-            showToast('✅ Izin notifikasi & alarm bawaan Android diminta/aktif!');
-            if (!('Notification' in window)) return;
+            try {
+              await ensureNativeNotifChannel(nativeLocalNotif);
+              const current =
+                typeof nativeLocalNotif.checkPermissions === 'function'
+                  ? await nativeLocalNotif.checkPermissions()
+                  : null;
+              if (current?.display === 'granted') {
+                await updateNotifButton();
+                if (navigator.vibrate) navigator.vibrate([120, 60, 120]);
+                showToast('✅ Notifikasi Android sudah aktif! Mulai, Jeda, Lanjut, dan Alarm Selesai siap.');
+                return;
+              }
+              const permRes =
+                typeof nativeLocalNotif.requestPermissions === 'function'
+                  ? await nativeLocalNotif.requestPermissions()
+                  : null;
+              await updateNotifButton();
+              if (permRes?.display === 'granted') {
+                if (navigator.vibrate) navigator.vibrate([120, 60, 120]);
+                showToast('✅ Notifikasi Android & alarm bawaan berhasil diaktifkan!');
+              } else {
+                showToast('Izin notifikasi belum aktif. Izinkan notifikasi di Pengaturan Aplikasi HP.');
+              }
+            } catch (err) {
+              await updateNotifButton();
+            }
+            return;
           }
+
+          // 2. Mode Browser Web
           if (!('Notification' in window)) return;
           if (Notification.permission === 'granted') {
             if (navigator.vibrate) navigator.vibrate([120, 60, 120]);
@@ -5171,6 +5237,9 @@
           }
         });
       }
+
+      // Otomatis minta izin notifikasi bawaan & sinkron status tombol saat aplikasi dibuka di Android (APK)
+      initNativeLocalNotifications();
 
       if (btnTestSound) {
         btnTestSound.addEventListener('click', () => {
@@ -5203,13 +5272,49 @@
         tag = 'electrolux-wash-status',
         vibrate = [150, 80, 150],
         requireInteraction = false,
-        messageType = 'SHOW_WASH_NOTIFICATION'
+        messageType = 'SHOW_WASH_NOTIFICATION',
+        nativeId = NATIVE_STATUS_NOTIF_ID
       }) {
         if (navigator.vibrate && Array.isArray(vibrate)) {
           try {
             navigator.vibrate(vibrate);
           } catch (e) {}
         }
+
+        // 1. Jika berjalan di APK Android (Capacitor), kirim langsung via LocalNotifications.schedule (1 detik dari sekarang)
+        const localNotif = getCapacitorLocalNotifications();
+        if (localNotif) {
+          try {
+            await ensureNativeNotifChannel(localNotif);
+            let perm =
+              typeof localNotif.checkPermissions === 'function'
+                ? await localNotif.checkPermissions()
+                : { display: 'granted' };
+            if (perm?.display !== 'granted' && typeof localNotif.requestPermissions === 'function') {
+              perm = await localNotif.requestPermissions();
+              await updateNotifButton();
+            }
+            if (perm?.display !== 'granted') return;
+
+            if (typeof localNotif.cancel === 'function') {
+              await localNotif.cancel({ notifications: [{ id: nativeId }] }).catch(() => {});
+            }
+            await localNotif.schedule({
+              notifications: [
+                {
+                  id: nativeId,
+                  title,
+                  body,
+                  channelId: NATIVE_NOTIF_CHANNEL_ID,
+                  schedule: { at: new Date(Date.now() + 1000), allowWhileIdle: true }
+                }
+              ]
+            });
+          } catch (err) {}
+          return;
+        }
+
+        // 2. Mode Browser Web (Service Worker showNotification / Web Notification API)
         if (!('Notification' in window) || Notification.permission !== 'granted') return;
 
         const options = {
@@ -5262,7 +5367,8 @@
             body: `Mode ${modeName} berjalan. Estimasi selesai pukul ${eta}.`,
             tag: 'electrolux-wash-status',
             vibrate: [150, 80, 150],
-            requireInteraction: false
+            requireInteraction: false,
+            nativeId: NATIVE_STATUS_NOTIF_ID
           });
         } else if (action === 'pause') {
           const sisa = formatRemainingMinSec(remainingMs || 0);
@@ -5271,7 +5377,8 @@
             body: `Mode ${modeName} dijeda. Sisa waktu ${sisa}.`,
             tag: 'electrolux-wash-status',
             vibrate: [120, 60, 120],
-            requireInteraction: false
+            requireInteraction: false,
+            nativeId: NATIVE_STATUS_NOTIF_ID
           });
         } else if (action === 'resume') {
           const eta = formatClockTime(endTime || Date.now());
@@ -5280,7 +5387,8 @@
             body: `Mode ${modeName} kembali berjalan. Estimasi selesai pukul ${eta}.`,
             tag: 'electrolux-wash-status',
             vibrate: [150, 80, 150],
-            requireInteraction: false
+            requireInteraction: false,
+            nativeId: NATIVE_STATUS_NOTIF_ID
           });
         }
       }
@@ -5292,7 +5400,8 @@
           tag: 'electrolux-wash-done',
           vibrate: [300, 100, 300, 100, 300],
           requireInteraction: true,
-          messageType: 'SHOW_COMPLETION_NOTIFICATION'
+          messageType: 'SHOW_COMPLETION_NOTIFICATION',
+          nativeId: NATIVE_DONE_NOW_NOTIF_ID
         });
       }
 
